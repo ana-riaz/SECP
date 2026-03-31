@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# Environment & secrets
+.env
+*.env.*
+
+# Data & vector store (large binary/runtime files)
+data/qdrant/
+data/chromadb/
+data/processed_docs/
+data/audit_log.jsonl
+data/checksums.json
+data/knowledge.db
+data/knowledge_base.db
+data/flagged/
+SECP - Adjudication Division - AI Test Cases.xlsx
+SECP - Adjudication Division - AI Use Case.docx
+
+# Source documents (not committed — too large)
+SECP_docs/
+
+# Logs
+logs/
+*.log
+
+# Frontend build output & dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Misc
+*.bak
+*.swp
+*.tmp
+tailwind.css
+
+frontend/package.json
+frontend/package-lock.json

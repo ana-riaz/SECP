@@ -1,0 +1,33 @@
+# Web framework
+fastapi==0.135.1
+uvicorn==0.42.0
+starlette==0.52.1
+
+# Data validation
+pydantic==2.12.5
+pydantic-settings==2.13.1
+
+# Database
+pymongo==4.16.0
+qdrant-client
+
+# AI / ML
+openai
+sentence-transformers
+langchain
+
+# Document processing
+pdfplumber
+python-docx
+pytesseract
+pdf2image
+
+# HTTP & async
+httpx==0.28.1
+
+# Utilities
+python-dotenv
+pandas
+numpy
+portalocker
+watchfiles

@@ -222,6 +222,14 @@ def delete_chat_session(session_id: str) -> None:
     _chat_col().delete_one({"session_id": session_id})
 
 
+def rename_chat_session(session_id: str, title: str) -> None:
+    """Update only the title of a session — messages are untouched."""
+    _chat_col().update_one(
+        {"session_id": session_id},
+        {"$set": {"title": title[:120], "updated_at": datetime.now(timezone.utc)}},
+    )
+
+
 def audit_summary() -> dict:
     pipeline = [
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},

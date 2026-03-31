@@ -3,7 +3,7 @@ SECP Adjudication RAG — FastAPI Backend
 Wraps search_engine.py and summarize.py for the web UI.
 """
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -85,10 +85,6 @@ def _get_openai():
 
 
 def check_query_safety(query: str) -> Optional[str]:
-    """
-    Returns a refusal message string if the query is out-of-scope, else None.
-    Falls back to None (allow) if the OpenAI call fails.
-    """
     client = _get_openai()
     if not client:
         return None
@@ -150,18 +146,37 @@ class ConsolidatedRequest(BaseModel):
     doc_ids: list[str]
     scope: str = ""
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+from auth import require_auth, authenticate
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
 
 
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    token = authenticate(req.username, req.password)
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.get("/api/auth/me")
+def me(user: str = Depends(require_auth)):
+    return {"username": user}
+
+
 @app.get("/api/stats")
-def stats():
+def stats(user: str = Depends(require_auth)):
     import mongo_store
     try:
         from qdrant_client import QdrantClient
@@ -198,7 +213,7 @@ def stats():
 
 
 @app.get("/api/documents")
-def documents():
+def documents(user: str = Depends(require_auth)):
     import mongo_store
     result = []
     for d in mongo_store.get_all_docs():
@@ -224,7 +239,7 @@ def documents():
 
 
 @app.post("/api/search")
-def search(req: SearchRequest):
+def search(req: SearchRequest, user: str = Depends(require_auth)):
     # Safety check first
     if req.use_llm:
         refusal_message = check_query_safety(req.query)
@@ -340,20 +355,20 @@ def _parse_case_header(summary: dict) -> dict:
 
 
 @app.get("/api/chat/sessions")
-def list_chat_sessions():
+def list_chat_sessions(user: str = Depends(require_auth)):
     import mongo_store
     return mongo_store.get_chat_sessions()
 
 
 @app.post("/api/chat/sessions")
-def create_chat_session(req: ChatSessionCreate):
+def create_chat_session(req: ChatSessionCreate, user: str = Depends(require_auth)):
     import mongo_store
     session_id = mongo_store.create_chat_session(req.title, req.messages)
     return {"session_id": session_id}
 
 
 @app.get("/api/chat/sessions/{session_id}")
-def get_chat_session(session_id: str):
+def get_chat_session(session_id: str, user: str = Depends(require_auth)):
     import mongo_store
     s = mongo_store.get_chat_session(session_id)
     if not s:
@@ -362,21 +377,31 @@ def get_chat_session(session_id: str):
 
 
 @app.put("/api/chat/sessions/{session_id}")
-def update_chat_session(session_id: str, req: ChatSessionUpdate):
+def update_chat_session(session_id: str, req: ChatSessionUpdate, user: str = Depends(require_auth)):
     import mongo_store
     mongo_store.update_chat_session(session_id, req.messages, req.title)
     return {"ok": True}
 
 
 @app.delete("/api/chat/sessions/{session_id}")
-def delete_chat_session(session_id: str):
+def delete_chat_session(session_id: str, user: str = Depends(require_auth)):
     import mongo_store
     mongo_store.delete_chat_session(session_id)
     return {"ok": True}
 
 
+class RenameRequest(BaseModel):
+    title: str
+
+@app.patch("/api/chat/sessions/{session_id}/rename")
+def rename_chat_session(session_id: str, req: RenameRequest, user: str = Depends(require_auth)):
+    import mongo_store
+    mongo_store.rename_chat_session(session_id, req.title)
+    return {"ok": True}
+
+
 @app.get("/api/summaries")
-def list_summaries():
+def list_summaries(user: str = Depends(require_auth)):
     """Return summary cards for all documents that have a structured_summary."""
     import mongo_store
     result = []
@@ -407,7 +432,7 @@ def list_summaries():
 
 
 @app.get("/api/summaries/{doc_id}")
-def get_summary(doc_id: str):
+def get_summary(doc_id: str, user: str = Depends(require_auth)):
     """Return the full structured_summary for a document."""
     import mongo_store
     doc = mongo_store.get_doc(doc_id)
@@ -422,7 +447,7 @@ def get_summary(doc_id: str):
 
 
 @app.post("/api/summaries/consolidated")
-async def consolidated_summary(req: ConsolidatedRequest):
+async def consolidated_summary(req: ConsolidatedRequest, user: str = Depends(require_auth)):
     """Generate a multi-case consolidated summary from selected documents."""
     import mongo_store
     from summarize import multi_case_summary
@@ -454,7 +479,7 @@ async def consolidated_summary(req: ConsolidatedRequest):
 
 
 @app.post("/api/summarize")
-async def summarize(file: UploadFile = File(...)):
+async def summarize(file: UploadFile = File(...), user: str = Depends(require_auth)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 

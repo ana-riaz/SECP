@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
 const EXAMPLES = [
-  'Show all adjudication orders issued under the Companies Act, 2017',
+  'What are the most common action types?',
   'Summarize common violations in auditor-related adjudication orders',
 ]
 
@@ -537,8 +537,29 @@ function SystemMessage({ msg }) {
 
 // ── Chat History Panel ────────────────────────────────────────────────────────
 
-function HistoryPanel({ sessions, currentId, onSelect, onNew, onDelete }) {
-  const [hoverId, setHoverId] = useState(null)
+function HistoryPanel({ sessions, currentId, onSelect, onNew, onDelete, onRename }) {
+  const [hoverId,    setHoverId]    = useState(null)
+  const [editingId,  setEditingId]  = useState(null)
+  const [editTitle,  setEditTitle]  = useState('')
+  const editRef = useRef(null)
+
+  function startRename(e, s) {
+    e.stopPropagation()
+    setEditingId(s.session_id)
+    setEditTitle(s.title || '')
+    setTimeout(() => { editRef.current?.select() }, 0)
+  }
+
+  function commitRename(sessionId) {
+    const title = editTitle.trim()
+    if (title) onRename(sessionId, title)
+    setEditingId(null)
+  }
+
+  function onEditKey(e, sessionId) {
+    if (e.key === 'Enter')  { e.preventDefault(); commitRename(sessionId) }
+    if (e.key === 'Escape') setEditingId(null)
+  }
 
   return (
     <aside className="history-panel">
@@ -554,23 +575,43 @@ function HistoryPanel({ sessions, currentId, onSelect, onNew, onDelete }) {
             <div
               key={s.session_id}
               className={`history-item ${s.session_id === currentId ? 'active' : ''}`}
-              onClick={() => onSelect(s.session_id)}
+              onClick={() => editingId !== s.session_id && onSelect(s.session_id)}
               onMouseEnter={() => setHoverId(s.session_id)}
               onMouseLeave={() => setHoverId(null)}
             >
-              <div className="history-item-title">{s.title || 'Untitled'}</div>
-              <div className="history-item-meta">
-                {fmtSessionDate(s.updated_at)}
-                {s.message_count > 0 && <span> · {s.message_count} msg{s.message_count !== 1 ? 's' : ''}</span>}
-              </div>
-              {hoverId === s.session_id && (
-                <button
-                  className="history-delete-btn"
-                  title="Delete chat"
-                  onClick={e => { e.stopPropagation(); onDelete(s.session_id) }}
-                >
-                  🗑
-                </button>
+              {editingId === s.session_id ? (
+                <input
+                  ref={editRef}
+                  className="history-rename-input"
+                  value={editTitle}
+                  onChange={e => setEditTitle(e.target.value)}
+                  onBlur={() => commitRename(s.session_id)}
+                  onKeyDown={e => onEditKey(e, s.session_id)}
+                  onClick={e => e.stopPropagation()}
+                  maxLength={120}
+                />
+              ) : (
+                <>
+                  <div className="history-item-title">{s.title || 'Untitled'}</div>
+                  <div className="history-item-meta">
+                    {fmtSessionDate(s.updated_at)}
+                    {s.message_count > 0 && <span> · {s.message_count} msg{s.message_count !== 1 ? 's' : ''}</span>}
+                  </div>
+                  {hoverId === s.session_id && (
+                    <div className="history-item-actions">
+                      <button
+                        className="history-action-btn"
+                        title="Rename"
+                        onClick={e => startRename(e, s)}
+                      >✎</button>
+                      <button
+                        className="history-action-btn history-action-btn--delete"
+                        title="Delete"
+                        onClick={e => { e.stopPropagation(); onDelete(s.session_id) }}
+                      >🗑</button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))
@@ -582,7 +623,9 @@ function HistoryPanel({ sessions, currentId, onSelect, onNew, onDelete }) {
 
 // ── Main Chat Component ───────────────────────────────────────────────────────
 
-export default function Chat() {
+export default function Chat({ token }) {
+  const authHeaders = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+
   const [messages,   setMessages]   = useState([])
   const [input,      setInput]      = useState('')
   const [loading,    setLoading]    = useState(false)
@@ -597,7 +640,7 @@ export default function Chat() {
 
   // Load session list on mount
   useEffect(() => {
-    fetch('/api/chat/sessions')
+    fetch('/api/chat/sessions', { headers: authHeaders })
       .then(r => r.json())
       .then(data => setSessions(Array.isArray(data) ? data : []))
       .catch(() => {})
@@ -616,7 +659,7 @@ export default function Chat() {
         const title = firstQuery?.slice(0, 100) || 'New Chat'
         const res = await fetch('/api/chat/sessions', {
           method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body:    JSON.stringify({ title, messages: msgs }),
         })
         const data = await res.json()
@@ -634,7 +677,7 @@ export default function Chat() {
         // Update existing session
         await fetch(`/api/chat/sessions/${sessionId}`, {
           method:  'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body:    JSON.stringify({ messages: msgs }),
         })
         setSessions(prev => prev.map(s =>
@@ -662,7 +705,7 @@ export default function Chat() {
     try {
       const res = await fetch('/api/search', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body:    JSON.stringify({ query, top_k: 5, use_llm: true }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -691,7 +734,7 @@ export default function Chat() {
 
   async function loadSession(sessionId) {
     try {
-      const res  = await fetch(`/api/chat/sessions/${sessionId}`)
+      const res  = await fetch(`/api/chat/sessions/${sessionId}`, { headers: authHeaders })
       const data = await res.json()
       setMessages(data.messages || [])
       setCurrentId(sessionId)
@@ -707,9 +750,22 @@ export default function Chat() {
 
   async function deleteSession(sessionId) {
     try {
-      await fetch(`/api/chat/sessions/${sessionId}`, { method: 'DELETE' })
+      await fetch(`/api/chat/sessions/${sessionId}`, { method: 'DELETE', headers: authHeaders })
       setSessions(prev => prev.filter(s => s.session_id !== sessionId))
       if (currentId === sessionId) startNewChat()
+    } catch {}
+  }
+
+  async function renameSession(sessionId, newTitle) {
+    try {
+      await fetch(`/api/chat/sessions/${sessionId}/rename`, {
+        method:  'PATCH',
+        headers: authHeaders,
+        body:    JSON.stringify({ title: newTitle }),
+      })
+      setSessions(prev => prev.map(s =>
+        s.session_id === sessionId ? { ...s, title: newTitle } : s
+      ))
     } catch {}
   }
 
@@ -728,6 +784,7 @@ export default function Chat() {
         onSelect={loadSession}
         onNew={startNewChat}
         onDelete={deleteSession}
+        onRename={renameSession}
       />
 
       <div className="chat-area">
@@ -767,12 +824,12 @@ export default function Chat() {
           <textarea
             ref={textareaRef}
             rows={1}
-            placeholder="Ask about adjudication orders… (Enter to send, Shift+Enter for new line)"
+            placeholder="Type your query here. Ask about adjudication orders… (Enter to send, Shift+Enter for new line)"
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
             disabled={loading}
-            style={{ minHeight: 42 }}
+            style={{ minHeight: 46 }}
           />
           <button
             className="send-btn"

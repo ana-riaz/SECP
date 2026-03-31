@@ -25,6 +25,11 @@ pdf2image
 # HTTP & async
 httpx==0.28.1
 
+# Auth
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==4.0.1
+
 # Utilities
 python-dotenv
 pandas

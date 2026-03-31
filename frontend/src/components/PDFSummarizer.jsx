@@ -36,12 +36,13 @@ function ActionBadge({ type }) {
 
 // ─── Full Summary Modal ───────────────────────────────────────────────────────
 
-function SummaryModal({ docId, filename, onClose }) {
+function SummaryModal({ docId, filename, onClose, token }) {
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
+  const authH = token ? { Authorization: `Bearer ${token}` } : {}
 
   useEffect(() => {
-    fetch(`/api/summaries/${docId}`)
+    fetch(`/api/summaries/${docId}`, { headers: authH })
       .then(r => r.json())
       .then(d => { setSummary(d.summary); setLoading(false) })
       .catch(() => setLoading(false))
@@ -367,7 +368,8 @@ function applyFilters(cards, filters, globalQ) {
   })
 }
 
-function SummaryLibrary() {
+function SummaryLibrary({ token }) {
+  const authH = token ? { Authorization: `Bearer ${token}` } : {}
   const [cards,     setCards]    = useState([])
   const [loading,   setLoading]  = useState(true)
   const [globalQ,   setGlobalQ]  = useState('')
@@ -383,7 +385,7 @@ function SummaryLibrary() {
   const [generatingId, setGeneratingId] = useState(null)
 
   useEffect(() => {
-    fetch('/api/summaries')
+    fetch('/api/summaries', { headers: authH })
       .then(r => r.json())
       .then(data => { setCards(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => setLoading(false))
@@ -414,7 +416,7 @@ function SummaryLibrary() {
     setConsolidating(true); setConError(null)
     try {
       const res = await fetch('/api/summaries/consolidated', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authH },
         body: JSON.stringify({ doc_ids: [...selected], scope }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`)
@@ -563,6 +565,7 @@ function SummaryLibrary() {
           docId={modalId}
           filename={modalFile}
           onClose={() => { setModalId(null); setModalFile('') }}
+          token={token}
         />
       )}
 
@@ -743,7 +746,8 @@ const UPLOAD_STEPS = [
   { key: 'build',   label: 'Building structured summary…' },
 ]
 
-function UploadTab() {
+function UploadTab({ token }) {
+  const authH = token ? { Authorization: `Bearer ${token}` } : {}
   const [step,     setStep]    = useState(null)
   const [summary,  setSummary] = useState(null)
   const [filename, setFilename] = useState('')
@@ -763,7 +767,7 @@ function UploadTab() {
     try {
       setStep('extract'); await new Promise(r => setTimeout(r, 400))
       setStep('analyze')
-      const res = await fetch('/api/summarize', { method: 'POST', body: form })
+      const res = await fetch('/api/summarize', { method: 'POST', body: form, headers: authH })
       setStep('build'); await new Promise(r => setTimeout(r, 300))
       if (!res.ok) throw new Error((await res.json().catch(()=>({}))).detail || `HTTP ${res.status}`)
       setSummary((await res.json()).summary); setStep(null)
@@ -875,7 +879,7 @@ function UploadTab() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export default function PDFSummarizer() {
+export default function PDFSummarizer({ token }) {
   const [subTab, setSubTab] = useState('library')
 
   return (
@@ -886,7 +890,7 @@ export default function PDFSummarizer() {
         <button className={`sum-subtab ${subTab==='upload'?'active':''}`}
           onClick={() => setSubTab('upload')}>Upload New PDF</button>
       </div>
-      {subTab === 'library' ? <SummaryLibrary /> : <UploadTab />}
+      {subTab === 'library' ? <SummaryLibrary token={token} /> : <UploadTab token={token} />}
     </div>
   )
 }
